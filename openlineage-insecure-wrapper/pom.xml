@@ -100,6 +100,13 @@
                                     </excludes>
                                 </filter>
                             </filters>
+                            <!-- Relocate Jackson to avoid conflicts with Spark/Glue Jackson -->
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>io.openlineage.shaded.jackson</shadedPattern>
+                                </relocation>
+                            </relocations>
                             <!-- Exclude Spark & SLF4J APIs (provided at runtime) even if transitively pulled -->
                             <artifactSet>
                                 <excludes>
