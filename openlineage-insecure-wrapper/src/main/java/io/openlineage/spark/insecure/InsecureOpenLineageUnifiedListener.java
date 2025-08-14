@@ -12,7 +12,11 @@ import org.slf4j.LoggerFactory;
  *  - Installs a permissive (INSECURE) SSL context (test-only) on class load
  *  - Delegates all Spark lifecycle callbacks to the standard OpenLineageSparkListener
  *
- * Usage:
+ * Usage (Method 1 - Auto-discovery via ServiceLoader):
+ *   Just add this JAR to --extra-jars; listener auto-registers.
+ *   Configure normal spark.openlineage.* transport configs.
+ *
+ * Usage (Method 2 - Explicit):
  *   --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener
  *   plus normal spark.openlineage.* transport configs.
  *

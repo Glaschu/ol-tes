@@ -1,1 +1,2 @@
-io.openlineage.client.transports.HttpTransportFactory
+# Removed - no longer using custom factory approach
+# Use unified listener instead
