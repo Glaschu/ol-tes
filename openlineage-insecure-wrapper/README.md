@@ -1,6 +1,6 @@
-# OpenLineage Insecure Wrapper
+# OpenLineage Spark - Insecure Wrapper
 
-This project provides a wrapper JAR for OpenLineage that disables SSL certificate validation for the HTTP transport. This is **only intended for testing environments** where self-signed certificates are used and proper certificate management is not feasible.
+This project provides a wrapper JAR for OpenLineage Spark integration that disables SSL certificate validation for the HTTP transport. This is **only intended for testing environments** where self-signed certificates are used and proper certificate management is not feasible.
 
 ## Security Warning
 
@@ -8,12 +8,11 @@ This project provides a wrapper JAR for OpenLineage that disables SSL certificat
 
 ## How it works
 
-The wrapper overrides the standard `HttpTransportFactory` and `HttpTransport` classes from OpenLineage by:
+This wrapper provides three ways to disable SSL certificate validation in OpenLineage Spark:
 
-1. Implementing a custom `InsecureTrustManager` that accepts all certificates without validation
-2. Creating a custom `InsecureHttpTransport` that uses this trust manager
-3. Overriding the `HttpTransportFactory` to create instances of our insecure transport
-4. Using Java's service provider mechanism to replace the original factory
+1. **Service Provider Override**: Overrides the standard `HttpTransportFactory` to create insecure transports
+2. **Custom Spark Listener**: Provides an `InsecureOpenLineageSparkListener` that uses the insecure transport
+3. **Direct API Usage**: Allows you to create insecure clients and transports directly in your code
 
 ## Building
 
@@ -35,14 +34,42 @@ Upload the JAR to S3 and add it to your Glue job:
 --extra-jars s3://your-bucket/path/to/openlineage-insecure-wrapper-1.0-SNAPSHOT.jar
 ```
 
-Make sure this JAR appears before any other OpenLineage JARs in the classpath.
+This works without any code changes because the JAR automatically overrides the HTTP transport factory.
 
-### In Spark
+### In Spark Applications
 
 Add the JAR to your Spark submit command:
 
 ```bash
 spark-submit --jars openlineage-insecure-wrapper-1.0-SNAPSHOT.jar ...
+```
+
+#### Using the Custom Spark Listener
+
+You can explicitly use the insecure listener in your Spark configuration:
+
+```
+--conf spark.extraListeners=io.openlineage.spark.agent.InsecureOpenLineageSparkListener
+--conf spark.openlineage.transport.type=http
+--conf spark.openlineage.transport.url=https://your-server:port
+```
+
+#### Using the Helper Class
+
+You can also use the provided helper class in your Spark application:
+
+```java
+import io.openlineage.spark.InsecureOpenLineageSpark;
+import org.apache.spark.SparkConf;
+import org.apache.spark.sql.SparkSession;
+
+SparkConf conf = new SparkConf();
+InsecureOpenLineageSpark.configureInsecureTransport(conf, "https://your-server:port");
+
+SparkSession spark = SparkSession.builder()
+    .config(conf)
+    .appName("Your Spark App")
+    .getOrCreate();
 ```
 
 ### Direct Usage in Code

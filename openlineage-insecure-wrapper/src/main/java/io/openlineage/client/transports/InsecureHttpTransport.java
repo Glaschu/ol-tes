@@ -34,6 +34,28 @@ public class InsecureHttpTransport extends HttpTransport {
         log.warn("SECURITY WARNING: Using InsecureHttpTransport which disables SSL certificate validation. " +
                 "This should only be used in testing environments!");
     }
+    
+    /**
+     * Creates an insecure HTTP transport with a URI.
+     * This is a convenience constructor for use with Spark integration.
+     *
+     * @param uri The URI for the OpenLineage API endpoint
+     */
+    public InsecureHttpTransport(@NonNull URI uri) {
+        this(createHttpConfigFromUri(uri));
+    }
+    
+    /**
+     * Helper method to create an HttpConfig from a URI.
+     *
+     * @param uri The URI for the OpenLineage API endpoint
+     * @return An HttpConfig object
+     */
+    private static HttpConfig createHttpConfigFromUri(URI uri) {
+        HttpConfig config = new HttpConfig();
+        config.setUrl(uri);
+        return config;
+    }
 
     /**
      * Creates a HTTP client that accepts all SSL certificates without validation.
