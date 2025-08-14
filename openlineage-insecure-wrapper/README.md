@@ -100,6 +100,11 @@ Common causes:
 3. (Two-listener legacy mode only) Ordering incorrect.
 4. Endpoint unreachable / network (Glue VPC security groups, DNS, firewall). Test with a lightweight job hitting the URL (e.g. add a small Scala snippet doing `scala.io.Source.fromURL("https://.../health").mkString`).
 5. Self-signed certificate still rejected: verify logs; add `--conf spark.executor.extraJavaOptions=-Djavax.net.debug=ssl --conf spark.driver.extraJavaOptions=-Djavax.net.debug=ssl` for verbose SSL debug (use sparingly; very verbose).
+   **Alternative**: Force SSL bypass at JVM level with:
+   ```
+   --conf spark.driver.extraJavaOptions="-Djavax.net.ssl.trustStore= -Dcom.sun.net.ssl.checkRevocation=false -Dtrust_all_cert=true"
+   --conf spark.executor.extraJavaOptions="-Djavax.net.ssl.trustStore= -Dcom.sun.net.ssl.checkRevocation=false -Dtrust_all_cert=true"
+   ```
 6. Missing required config: at minimum set `spark.openlineage.transport.type`, `spark.openlineage.transport.url`, and ensure `spark.app.name` (used as job name). Optionally set `spark.openlineage.namespace`.
 7. Suppressed errors: enable debug logging: `--conf spark.openlineage.debug=true` (if supported by your openlineage-spark version) or raise root logger: `--conf spark.driver.extraJavaOptions='-Dorg.slf4j.simpleLogger.defaultLogLevel=debug'`.
 
