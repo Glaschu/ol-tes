@@ -30,9 +30,7 @@ public class InsecureOpenLineageSpark {
      */
     public static OpenLineageClient createInsecureClient(String url) {
         installGlobalInsecureSSL();
-        HttpConfig cfg = new HttpConfig();
-        cfg.setUrl(URI.create(url));
-        return new OpenLineageClient(new HttpTransport(cfg));
+        return new OpenLineageClient(io.openlineage.client.transports.InsecureHttpTransportWrapper.create(URI.create(url)));
     }
     
     /**
@@ -44,9 +42,7 @@ public class InsecureOpenLineageSpark {
      */
     public static HttpTransport createInsecureTransport(URI uri) {
         installGlobalInsecureSSL();
-        HttpConfig cfg = new HttpConfig();
-        cfg.setUrl(uri);
-        return new HttpTransport(cfg);
+        return io.openlineage.client.transports.InsecureHttpTransportWrapper.create(uri);
     }
     
     /**

@@ -2,10 +2,15 @@ package io.openlineage.spark.insecure;
 
 import io.openlineage.spark.InsecureOpenLineageSpark;
 import io.openlineage.spark.agent.OpenLineageSparkListener;
+import io.openlineage.client.OpenLineageClient;
+import io.openlineage.client.transports.InsecureHttpTransportWrapper;
 import org.apache.spark.SparkConf;
 import org.apache.spark.scheduler.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Field;
+import java.net.URI;
 
 /**
  * Single drop-in SparkListener:
@@ -60,19 +65,64 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
     try {
       // Re-install SSL bypass right before creating delegate (in case it got reset)
       InsecureOpenLineageSpark.installGlobalInsecureSSL();
-      return new OpenLineageSparkListener();
+      
+      OpenLineageSparkListener listener = new OpenLineageSparkListener();
+      
+      // Try to replace the client in the listener with our insecure one
+      injectInsecureClient(listener);
+      
+      return listener;
     } catch (Throwable t) {
       log.error("Failed to instantiate OpenLineageSparkListener; lineage events will NOT be emitted", t);
-      // Try once more with aggressive SSL bypass
-      try {
-        System.setProperty("javax.net.ssl.trustStore", "");
-        InsecureOpenLineageSpark.installGlobalInsecureSSL();
-        return new OpenLineageSparkListener();
-      } catch (Throwable t2) {
-        log.error("Final attempt to create OpenLineageSparkListener failed", t2);
-        throw new RuntimeException("Cannot create OpenLineageSparkListener even with SSL bypass", t2);
-      }
+      throw new RuntimeException("Cannot create OpenLineageSparkListener even with SSL bypass", t);
     }
+  }
+  
+  /**
+   * Attempts to inject an insecure OpenLineageClient into the listener via reflection.
+   */
+  private void injectInsecureClient(OpenLineageSparkListener listener) {
+    try {
+      // Get OpenLineage transport URL from system properties or environment
+      String transportUrl = System.getProperty("spark.openlineage.transport.url");
+      if (transportUrl == null) {
+        transportUrl = System.getenv("OPENLINEAGE_URL");
+      }
+      
+      if (transportUrl != null) {
+        log.info("Injecting insecure client for URL: {}", transportUrl);
+        OpenLineageClient insecureClient = new OpenLineageClient(
+          io.openlineage.client.transports.InsecureHttpTransportWrapper.create(URI.create(transportUrl))
+        );
+        
+        // Try to replace the client field via reflection
+        // Note: This is fragile and may break with OpenLineage version changes
+        try {
+          Field clientField = findClientField(listener.getClass());
+          if (clientField != null) {
+            clientField.setAccessible(true);
+            clientField.set(listener, insecureClient);
+            log.info("Successfully injected insecure OpenLineage client");
+          }
+        } catch (Exception e) {
+          log.warn("Could not inject insecure client via reflection: {}", e.getMessage());
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Failed to inject insecure client: {}", e.getMessage());
+    }
+  }
+  
+  private Field findClientField(Class<?> clazz) {
+    while (clazz != null) {
+      for (Field field : clazz.getDeclaredFields()) {
+        if (OpenLineageClient.class.isAssignableFrom(field.getType())) {
+          return field;
+        }
+      }
+      clazz = clazz.getSuperclass();
+    }
+    return null;
   }
 
   @Override
