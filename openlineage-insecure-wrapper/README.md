@@ -77,12 +77,12 @@ If you call `configureInsecureTransport(conf, url)` that already installs the gl
 
 ### 2b. spark-submit with ONLY --conf (no code changes)
 
-Add BOTH listeners so insecure SSL is installed before the OpenLineage listener initializes. Order matters (insecure first):
+Preferred (single listener): use the unified listener that installs insecure SSL then delegates to OpenLineage:
 
 ```bash
 spark-submit \
     --jars openlineage-insecure-all.jar \
-    --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureSslInitListener,io.openlineage.spark.agent.OpenLineageSparkListener \
+    --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener \
     --conf spark.openlineage.transport.type=http \
     --conf spark.openlineage.transport.url=https://openlineage.dev.local:5000 \
     --conf spark.openlineage.namespace=dev \
@@ -90,16 +90,14 @@ spark-submit \
     your-app.jar
 ```
 
-This path requires zero application code changes. The first listener's static initializer installs the global insecure SSL context; the second listener (from the official openlineage-spark jar) emits lineage events.
-
-If you omit `io.openlineage.spark.agent.OpenLineageSparkListener` no events will be produced.
+This path requires zero application code changes and only one listener. (Legacy: you can still use the two-listener approach if desired.)
 
 ### Troubleshooting: No events emitted
 
 Common causes:
-1. Missing OpenLineage listener: ensure `io.openlineage.spark.agent.OpenLineageSparkListener` is present in `spark.extraListeners` AFTER the insecure listener.
+1. Wrong listener: ensure you used `io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener` (or the two-listener combination) in `spark.extraListeners`.
 2. Missing openlineage classes: if you used the plain jar, add the official `openlineage-spark` jar OR switch to the shaded `openlineage-insecure-all.jar`.
-3. Wrong ordering: insecure listener must come first so SSL bypass is active before the OpenLineage transport is constructed.
+3. (Two-listener legacy mode only) Ordering incorrect.
 4. Endpoint unreachable / network (Glue VPC security groups, DNS, firewall). Test with a lightweight job hitting the URL (e.g. add a small Scala snippet doing `scala.io.Source.fromURL("https://.../health").mkString`).
 5. Self-signed certificate still rejected: verify logs; add `--conf spark.executor.extraJavaOptions=-Djavax.net.debug=ssl --conf spark.driver.extraJavaOptions=-Djavax.net.debug=ssl` for verbose SSL debug (use sparingly; very verbose).
 6. Missing required config: at minimum set `spark.openlineage.transport.type`, `spark.openlineage.transport.url`, and ensure `spark.app.name` (used as job name). Optionally set `spark.openlineage.namespace`.

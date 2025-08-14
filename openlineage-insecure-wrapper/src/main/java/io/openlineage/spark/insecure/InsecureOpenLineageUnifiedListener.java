@@ -1,0 +1,54 @@
+package io.openlineage.spark.insecure;
+
+import io.openlineage.spark.InsecureOpenLineageSpark;
+import io.openlineage.spark.agent.OpenLineageSparkListener;
+import org.apache.spark.scheduler.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Single drop-in SparkListener:
+ *  - Installs a permissive (INSECURE) SSL context (test-only) on class load
+ *  - Delegates all Spark lifecycle callbacks to the standard OpenLineageSparkListener
+ *
+ * Usage:
+ *   --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener
+ *   plus normal spark.openlineage.* transport configs.
+ *
+ * SECURITY: DO NOT USE IN PRODUCTION.
+ */
+public class InsecureOpenLineageUnifiedListener extends SparkListener {
+  private static final Logger log = LoggerFactory.getLogger(InsecureOpenLineageUnifiedListener.class);
+  private final OpenLineageSparkListener delegate = new OpenLineageSparkListener();
+
+  static {
+    try {
+      InsecureOpenLineageSpark.installGlobalInsecureSSL();
+      log.warn("[InsecureOpenLineageUnifiedListener] Installed GLOBAL insecure SSL context. TEST USE ONLY.");
+    } catch (RuntimeException ex) {
+      log.error("Failed to install insecure SSL context", ex);
+    }
+  }
+
+  public InsecureOpenLineageUnifiedListener() {
+    // delegate constructed; nothing else
+  }
+
+  @Override
+  public void onJobStart(SparkListenerJobStart jobStart) { delegate.onJobStart(jobStart); }
+
+  @Override
+  public void onJobEnd(SparkListenerJobEnd jobEnd) { delegate.onJobEnd(jobEnd); }
+
+  @Override
+  public void onTaskEnd(SparkListenerTaskEnd taskEnd) { delegate.onTaskEnd(taskEnd); }
+
+  @Override
+  public void onApplicationStart(SparkListenerApplicationStart appStart) { delegate.onApplicationStart(appStart); }
+
+  @Override
+  public void onApplicationEnd(SparkListenerApplicationEnd appEnd) { delegate.onApplicationEnd(appEnd); }
+
+  @Override
+  public void onOtherEvent(SparkListenerEvent event) { delegate.onOtherEvent(event); }
+}
