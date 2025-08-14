@@ -3,7 +3,8 @@ package io.openlineage.spark.insecure;
 import io.openlineage.spark.InsecureOpenLineageSpark;
 import io.openlineage.spark.agent.OpenLineageSparkListener;
 import io.openlineage.client.OpenLineageClient;
-import io.openlineage.client.transports.InsecureHttpTransportWrapper;
+import io.openlineage.client.transports.InsecureConfig;
+import io.openlineage.client.transports.InsecureTransport;
 import org.apache.spark.SparkConf;
 import org.apache.spark.scheduler.*;
 import org.slf4j.Logger;
@@ -11,6 +12,8 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Single drop-in SparkListener:
@@ -91,9 +94,21 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
       
       if (transportUrl != null) {
         log.info("Injecting insecure client for URL: {}", transportUrl);
-        OpenLineageClient insecureClient = new OpenLineageClient(
-          io.openlineage.client.transports.InsecureHttpTransportWrapper.create(URI.create(transportUrl))
-        );
+        
+        // Create insecure config and transport
+        InsecureConfig config = new InsecureConfig();
+        config.setUrl(URI.create(transportUrl));
+        
+        // Add any custom headers from system properties
+        Map<String, String> headers = new HashMap<>();
+        String apiKey = System.getProperty("spark.openlineage.transport.headers.api-key");
+        if (apiKey != null) {
+          headers.put("api-key", apiKey);
+        }
+        config.setHeaders(headers);
+        
+        InsecureTransport insecureTransport = new InsecureTransport(config);
+        OpenLineageClient insecureClient = new OpenLineageClient(insecureTransport);
         
         // Try to replace the client field via reflection
         // Note: This is fragile and may break with OpenLineage version changes

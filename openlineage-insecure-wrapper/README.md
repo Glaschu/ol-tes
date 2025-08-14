@@ -1,139 +1,139 @@
-# OpenLineage Spark – Insecure SSL Helper (TEST ONLY)
+# OpenLineage Insecure Wrapper
 
-This module provides convenience helpers to disable SSL certificate & hostname verification **only for local / sandbox testing** of the `openlineage-spark` integration against endpoints that use self‑signed certificates.
+A drop-in replacement for `openlineage-spark` that bypasses SSL certificate validation for testing environments.
 
-> ⚠️ **SECURITY WARNING**: Disabling SSL validation exposes you to Man‑in‑the‑Middle attacks and data compromise. **Never ship this to production.** Prefer fixing certificates instead.
+**⚠️ WARNING: This wrapper disables SSL certificate verification. Use only in development/testing environments. DO NOT use in production.**
 
-## What changed vs the original intent
+## What This Does
 
-Recent OpenLineage versions (≥ 0.22.0) made `HttpTransport` final and removed the pluggable `TransportFactory` interface pattern used earlier. Therefore this project no longer tries to:
+- Provides a single JAR that acts as a drop-in replacement for `openlineage-spark`
+- Automatically bypasses SSL certificate validation for all HTTP connections
+- Uses a custom insecure transport that bypasses Apache HTTP Client's shaded SSL implementation
+- Auto-registers as a SparkListener via ServiceLoader mechanism
+- Includes all OpenLineage dependencies in a single shaded JAR
 
-* Override `HttpTransportFactory` via ServiceLoader
-* Subclass `HttpTransport`
-* Provide a custom SparkListener replacement
+## Built JAR
 
-Instead we take the minimal, explicit approach: install a permissive (trust‑all) JVM SSL context + hostname verifier, then use the standard `HttpTransport` / `openlineage-spark` logic unchanged.
+The final JAR is: `target/openlineage-insecure-all.jar` (~23MB)
 
-## Features Provided
+## Usage
 
-* `InsecureOpenLineageSpark.installGlobalInsecureSSL()` – installs a temporary global trust manager & hostname verifier (current JVM only)
-* `InsecureOpenLineageSpark.configureInsecureTransport(SparkConf, url)` – helper to set Spark OpenLineage HTTP configs and install insecure SSL
-* `InsecureOpenLineageSpark.createInsecureClient(url)` – build an `OpenLineageClient` that will ignore cert validation (after installing insecure SSL)
+### AWS Glue (Recommended)
 
-## Build
+Simply add the JAR and configure OpenLineage via Spark configuration:
+
+```bash
+--extra-jars s3://your-bucket/openlineage-insecure-all.jar
+--conf spark.openlineage.transport.url=https://your-openlineage-endpoint/api/v1/lineage
+--conf spark.openlineage.transport.headers.api-key=your-api-key
+```
+
+### Manual Spark Configuration
+
+```bash
+spark-submit \
+  --jars openlineage-insecure-all.jar \
+  --conf spark.openlineage.transport.url=https://your-openlineage-endpoint/api/v1/lineage \
+  --conf spark.openlineage.transport.headers.api-key=your-api-key \
+  your-spark-app.py
+```
+
+### Explicit Listener Configuration (Alternative)
+
+If auto-discovery doesn't work:
+
+```bash
+--conf spark.extraListeners=io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener
+```
+
+## How It Works
+
+1. **Static SSL Bypass**: When the `InsecureOpenLineageUnifiedListener` class loads, it immediately installs a global insecure SSL context that trusts all certificates and hostnames.
+
+2. **Custom Transport**: Creates an `InsecureTransport` that uses `HttpURLConnection` with disabled SSL verification, completely bypassing OpenLineage's shaded Apache HTTP client.
+
+3. **Client Injection**: Uses reflection to inject the custom insecure client into the standard `OpenLineageSparkListener`.
+
+4. **ServiceLoader Auto-Registration**: Automatically registers as a SparkListener without requiring explicit configuration.
+
+## Configuration
+
+The wrapper reads the same configuration as standard OpenLineage:
+
+- `spark.openlineage.transport.url` - The OpenLineage endpoint URL
+- `spark.openlineage.transport.headers.api-key` - API key for authentication
+- Other standard OpenLineage configurations
+
+## Components
+
+### Core Classes
+
+- `InsecureOpenLineageUnifiedListener` - Main SparkListener that combines SSL bypass and OpenLineage event emission
+- `InsecureTransport` - Custom transport using HttpURLConnection with disabled SSL verification
+- `InsecureConfig` - Configuration class for the custom transport
+- `EarlySSLBootstrap` - Global SSL context bypass utilities
+- `InsecureOpenLineageSpark` - Utility methods for SSL bypass
+
+### SSL Bypass Strategy
+
+The wrapper uses multiple strategies to ensure SSL bypass:
+
+1. **Global SSL Context**: Installs a permissive SSL context that trusts all certificates
+2. **Custom Transport**: Uses `HttpURLConnection` instead of Apache HTTP client
+3. **JVM Properties**: Sets system properties to disable various SSL checks
+4. **Static Initialization**: Applies SSL bypass immediately when classes load
+
+## Building
 
 ```bash
 mvn clean package
 ```
 
-Resulting JARs:
-* `target/openlineage-insecure-wrapper-1.0-SNAPSHOT.jar` (plain)
-* `target/openlineage-insecure-all.jar` (shaded: bundles openlineage-java + openlineage-spark; still relies on Spark + SLF4J from runtime)
+This creates:
+- `target/openlineage-insecure-wrapper-1.0-SNAPSHOT.jar` - Basic JAR without dependencies
+- `target/openlineage-insecure-all.jar` - Shaded JAR with all dependencies (use this one)
 
-## Usage Scenarios
+## Testing
 
-### 1. AWS Glue (Spark environment)
+To test that SSL bypass is working:
 
-Upload the shaded JAR (`openlineage-insecure-all.jar`) to S3 and add it to the Glue job (no need to add a separate openlineage-spark jar):
+1. Configure a self-signed or invalid SSL endpoint
+2. Run your Spark job with the wrapper
+3. Check logs for successful OpenLineage event emission without SSL errors
 
-```
---extra-jars s3://your-bucket/openlineage-insecure-all.jar
-```
+## Troubleshooting
 
-In your Glue script (Scala or Python via JVM config) before creating the session:
+### SSL Errors Still Occurring
 
-```java
-import io.openlineage.spark.InsecureOpenLineageSpark;
-import org.apache.spark.SparkConf;
+If you still see SSL certificate errors:
 
-SparkConf conf = new SparkConf();
-InsecureOpenLineageSpark.configureInsecureTransport(conf, "https://openlineage.dev.local:5000");
-// Then build SparkSession as usual; openlineage-spark will pick up configs.
-```
+1. Verify you're using the shaded JAR (`openlineage-insecure-all.jar`)
+2. Check that the URL is correct and accessible
+3. Ensure no other OpenLineage JARs are on the classpath that might override the custom transport
 
-Required Spark configs set by helper:
-* `spark.openlineage.transport.type = http`
-* `spark.openlineage.transport.url = <your URL>`
+### Events Not Being Sent
 
-### 2. Plain spark-submit (local / test cluster)
+1. Check Spark logs for `InsecureOpenLineageUnifiedListener` initialization messages
+2. Verify the `spark.openlineage.transport.url` configuration is set
+3. Enable debug logging: `--conf spark.sql.adaptive.enabled=false --conf spark.serializer=org.apache.spark.serializer.KryoSerializer`
 
-Use only the shaded jar:
+### Version Conflicts
 
-```bash
-spark-submit \
-    --jars openlineage-insecure-all.jar \
-    --conf spark.openlineage.transport.type=http \
-    --conf spark.openlineage.transport.url=https://openlineage.dev.local:5000 \
-    your-app.jar
-```
+If you encounter dependency conflicts:
 
-Inside your code (before first HTTPS OpenLineage emission) optionally call:
+1. Ensure no other OpenLineage JARs are on the classpath
+2. Use `--conf spark.sql.extensions=` to disable any SQL extensions that might conflict
+3. Check Maven dependency tree for conflicts: `mvn dependency:tree`
 
-```java
-InsecureOpenLineageSpark.installGlobalInsecureSSL();
-```
+## Security Notice
 
-If you call `configureInsecureTransport(conf, url)` that already installs the global bypass.
+This wrapper is designed for development and testing environments where SSL certificate validation needs to be bypassed. It:
 
-### 2b. spark-submit with ONLY --conf (no code changes)
-
-Preferred (single listener): use the unified listener that installs insecure SSL then delegates to OpenLineage:
-
-```bash
-spark-submit \
-    --jars openlineage-insecure-all.jar \
-    --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener \
-    --conf spark.openlineage.transport.type=http \
-    --conf spark.openlineage.transport.url=https://openlineage.dev.local:5000 \
-    --conf spark.openlineage.namespace=dev \
-    --conf spark.app.name=demo-openlineage-job \
-    your-app.jar
-```
-
-This path requires zero application code changes and only one listener. (Legacy: you can still use the two-listener approach if desired.)
-
-### Troubleshooting: No events emitted
-
-Common causes:
-1. Wrong listener: ensure you used `io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener` (or the two-listener combination) in `spark.extraListeners`.
-2. Missing openlineage classes: if you used the plain jar, add the official `openlineage-spark` jar OR switch to the shaded `openlineage-insecure-all.jar`.
-3. (Two-listener legacy mode only) Ordering incorrect.
-4. Endpoint unreachable / network (Glue VPC security groups, DNS, firewall). Test with a lightweight job hitting the URL (e.g. add a small Scala snippet doing `scala.io.Source.fromURL("https://.../health").mkString`).
-5. Self-signed certificate still rejected: verify logs; add `--conf spark.executor.extraJavaOptions=-Djavax.net.debug=ssl --conf spark.driver.extraJavaOptions=-Djavax.net.debug=ssl` for verbose SSL debug (use sparingly; very verbose).
-   **Alternative**: Force SSL bypass at JVM level with:
-   ```
-   --conf spark.driver.extraJavaOptions="-Djavax.net.ssl.trustStore= -Dcom.sun.net.ssl.checkRevocation=false -Dtrust_all_cert=true"
-   --conf spark.executor.extraJavaOptions="-Djavax.net.ssl.trustStore= -Dcom.sun.net.ssl.checkRevocation=false -Dtrust_all_cert=true"
-   ```
-6. Missing required config: at minimum set `spark.openlineage.transport.type`, `spark.openlineage.transport.url`, and ensure `spark.app.name` (used as job name). Optionally set `spark.openlineage.namespace`.
-7. Suppressed errors: enable debug logging: `--conf spark.openlineage.debug=true` (if supported by your openlineage-spark version) or raise root logger: `--conf spark.driver.extraJavaOptions='-Dorg.slf4j.simpleLogger.defaultLogLevel=debug'`.
-
-Verification steps:
-* Check driver logs for lines containing `OpenLineageSparkListener` and `Sending lineage event` (or similar).
-* Use a local proxy (e.g. mitmproxy) pointing `spark.openlineage.transport.url` to inspect outgoing POSTs (testing only).
-* Curl / health-check the lineage endpoint from another environment to confirm it is up.
-
-### 3. Direct client usage (manual emission)
-
-```java
-import io.openlineage.spark.InsecureOpenLineageSpark;
-import io.openlineage.client.OpenLineageClient;
-
-OpenLineageClient client = InsecureOpenLineageSpark.createInsecureClient("https://openlineage.dev.local:5000");
-// client.emit(runEvent);
-```
-
-## Cleanup / Safety Tips
-
-* Call the insecure helpers only in test profiles (e.g., guard with an env var)
-* Prefer generating proper CA-signed or self-signed certs and trusting them explicitly
-* Restart JVM after testing—changes are global and process‑wide
-
-## Limitations
-
-* Does NOT transparently replace internal OpenLineage transport logic; it merely makes standard HTTPS calls skip validation
-* Global SSL bypass affects ALL HTTPS traffic in the JVM, not just OpenLineage
+- Disables ALL SSL certificate validation globally
+- Trusts all certificates and hostnames
+- Should NEVER be used in production environments
+- May affect other SSL connections in the same JVM
 
 ## License
 
-Apache License 2.0
+This project is for testing purposes only. Use at your own risk.

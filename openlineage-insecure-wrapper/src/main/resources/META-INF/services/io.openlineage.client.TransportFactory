@@ -1,2 +1,1 @@
-# Removed - no longer using custom factory approach
-# Use unified listener instead
+# Custom transport factory not needed - using direct injection
