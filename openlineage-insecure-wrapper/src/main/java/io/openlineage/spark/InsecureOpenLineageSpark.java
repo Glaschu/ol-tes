@@ -1,10 +1,16 @@
 package io.openlineage.spark;
 
 import io.openlineage.client.OpenLineageClient;
-import io.openlineage.client.transports.InsecureHttpTransport;
+import io.openlineage.client.transports.HttpConfig;
+import io.openlineage.client.transports.HttpTransport;
 
 import java.net.URI;
-import java.util.Properties;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import org.apache.spark.SparkConf;
 
 /**
@@ -23,9 +29,10 @@ public class InsecureOpenLineageSpark {
      * @return A client with disabled SSL certificate validation
      */
     public static OpenLineageClient createInsecureClient(String url) {
-        return OpenLineageClient.builder()
-            .transport(new InsecureHttpTransport(URI.create(url)))
-            .build();
+        installGlobalInsecureSSL();
+        HttpConfig cfg = new HttpConfig();
+        cfg.setUrl(URI.create(url));
+        return new OpenLineageClient(new HttpTransport(cfg));
     }
     
     /**
@@ -35,8 +42,11 @@ public class InsecureOpenLineageSpark {
      * @param uri The URI for the OpenLineage API
      * @return An InsecureHttpTransport instance
      */
-    public static InsecureHttpTransport createInsecureTransport(URI uri) {
-        return new InsecureHttpTransport(uri);
+    public static HttpTransport createInsecureTransport(URI uri) {
+        installGlobalInsecureSSL();
+        HttpConfig cfg = new HttpConfig();
+        cfg.setUrl(uri);
+        return new HttpTransport(cfg);
     }
     
     /**
@@ -50,11 +60,30 @@ public class InsecureOpenLineageSpark {
         // Configure Spark to use HTTP transport
         conf.set("spark.openlineage.transport.type", "http");
         conf.set("spark.openlineage.transport.url", apiUrl);
-        
-        // Set system properties to disable SSL certificate validation globally
-        System.setProperty("javax.net.ssl.trustStore", "NONE");
-        System.setProperty("javax.net.ssl.trustStoreType", "JKS");
-        System.setProperty("com.sun.net.ssl.checkRevocation", "false");
-        System.setProperty("javax.net.ssl.trustManagerAlgorithm", "X509");
+        installGlobalInsecureSSL();
+    }
+
+    /**
+     * Installs a permissive trust manager & hostname verifier globally. Use ONLY for testing.
+     */
+    public static void installGlobalInsecureSSL() {
+        try {
+            TrustManager[] trustAll = new TrustManager[]{
+                new X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) { }
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) { }
+                }
+            };
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, trustAll, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            HostnameVerifier allHostsValid = new HostnameVerifier() {
+                public boolean verify(String hostname, SSLSession session) { return true; }
+            };
+            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to install insecure SSL context", e);
+        }
     }
 }
