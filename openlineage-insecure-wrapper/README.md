@@ -40,11 +40,19 @@ spark-submit \
 
 ### Explicit Listener Configuration (Alternative)
 
-If auto-discovery doesn't work:
+If auto-discovery doesn't work, you can explicitly specify the listener:
 
+**Option 1 - Unified Listener (Default):**
 ```bash
 --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener
 ```
+
+**Option 2 - Direct Insecure Listener (For SSL Issues):**
+```bash
+--conf spark.extraListeners=io.openlineage.spark.insecure.DirectInsecureSparkListener
+```
+
+Use Option 2 if you're still getting SSL or keystore errors with Option 1.
 
 ## How It Works
 
@@ -105,11 +113,23 @@ To test that SSL bypass is working:
 
 ### SSL Errors Still Occurring
 
-If you still see SSL certificate errors:
+If you still see SSL certificate errors or keystore errors like "unable to create keymanagers from javax.net.ssl.keystore property":
 
-1. Verify you're using the shaded JAR (`openlineage-insecure-all.jar`)
-2. Check that the URL is correct and accessible
-3. Ensure no other OpenLineage JARs are on the classpath that might override the custom transport
+1. **Try the Direct Listener**: Use `DirectInsecureSparkListener` instead of the default unified listener:
+   ```bash
+   --conf spark.extraListeners=io.openlineage.spark.insecure.DirectInsecureSparkListener
+   ```
+
+2. **Verify Configuration**: Make sure you're using `spark.openlineage.transport.url` not just `spark.openlineage.url`
+
+3. **Check JAR Usage**: Verify you're using the shaded JAR (`openlineage-insecure-all.jar`)
+
+4. **Remove Other OpenLineage JARs**: Ensure no other OpenLineage JARs are on the classpath that might override the custom transport
+
+5. **Clear SSL Properties**: The wrapper automatically clears problematic SSL system properties, but you can also manually set:
+   ```bash
+   --conf spark.driver.extraJavaOptions="-Djavax.net.ssl.trustStore= -Djavax.net.ssl.keyStore="
+   ```
 
 ### Events Not Being Sent
 

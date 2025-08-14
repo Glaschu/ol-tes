@@ -36,6 +36,9 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
 
   static {
     try {
+      // Force ultra-aggressive SSL bypass immediately
+      GlobalSSLBypass.forceSSLBypass();
+      
       // Force early bootstrap
       EarlySSLBootstrap.init();
       
@@ -57,11 +60,39 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
 
   public InsecureOpenLineageUnifiedListener() {
     this.delegate = createDelegate();
+    log.info("InsecureOpenLineageUnifiedListener initialized with SSL bypass");
   }
 
   // Spark may try (SparkConf) constructor via reflection; provide it.
   public InsecureOpenLineageUnifiedListener(SparkConf conf) {
+    // Extract configuration before creating delegate
+    extractConfigurationToSystemProperties(conf);
     this.delegate = createDelegate();
+    log.info("InsecureOpenLineageUnifiedListener initialized with SparkConf and SSL bypass");
+  }
+
+  private void extractConfigurationToSystemProperties(SparkConf conf) {
+    // Extract OpenLineage configuration from SparkConf and set as system properties
+    // This ensures our injection mechanism can find the configuration
+    try {
+      String[] configKeys = {
+        "spark.openlineage.transport.url",
+        "spark.openlineage.url", 
+        "spark.openlineage.transport.headers.api-key",
+        "spark.openlineage.transport.timeout",
+        "spark.openlineage.namespace"
+      };
+      
+      for (String key : configKeys) {
+        String value = conf.get(key, null);
+        if (value != null) {
+          System.setProperty(key, value);
+          log.info("Extracted configuration: {} = {}", key, value);
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Failed to extract configuration from SparkConf", e);
+    }
   }
 
   private OpenLineageSparkListener createDelegate() {
@@ -89,6 +120,9 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
       // Get OpenLineage transport URL from system properties or environment
       String transportUrl = System.getProperty("spark.openlineage.transport.url");
       if (transportUrl == null) {
+        transportUrl = System.getProperty("spark.openlineage.url");
+      }
+      if (transportUrl == null) {
         transportUrl = System.getenv("OPENLINEAGE_URL");
       }
       
@@ -104,24 +138,36 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
         String apiKey = System.getProperty("spark.openlineage.transport.headers.api-key");
         if (apiKey != null) {
           headers.put("api-key", apiKey);
+          log.info("Added API key header");
         }
         config.setHeaders(headers);
         
+        log.info("Creating InsecureTransport with URL: {}", transportUrl);
         InsecureTransport insecureTransport = new InsecureTransport(config);
         OpenLineageClient insecureClient = new OpenLineageClient(insecureTransport);
         
         // Try to replace the client field via reflection
         // Note: This is fragile and may break with OpenLineage version changes
+        boolean injected = false;
         try {
           Field clientField = findClientField(listener.getClass());
           if (clientField != null) {
             clientField.setAccessible(true);
+            Object oldClient = clientField.get(listener);
             clientField.set(listener, insecureClient);
-            log.info("Successfully injected insecure OpenLineage client");
+            log.info("Successfully injected insecure OpenLineage client, replaced: {}", 
+                    oldClient != null ? oldClient.getClass().getSimpleName() : "null");
+            injected = true;
           }
         } catch (Exception e) {
           log.warn("Could not inject insecure client via reflection: {}", e.getMessage());
         }
+        
+        if (!injected) {
+          log.error("Failed to inject insecure client - events may fail with SSL errors");
+        }
+      } else {
+        log.warn("No OpenLineage transport URL found in configuration - skipping client injection");
       }
     } catch (Exception e) {
       log.warn("Failed to inject insecure client: {}", e.getMessage());

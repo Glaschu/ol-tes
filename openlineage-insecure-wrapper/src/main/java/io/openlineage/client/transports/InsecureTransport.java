@@ -23,7 +23,9 @@ public final class InsecureTransport extends Transport {
     private final TokenProvider tokenProvider;
     
     static {
-        // Install global insecure SSL context immediately
+        // Install global insecure SSL context immediately and clear problematic properties
+        io.openlineage.spark.insecure.GlobalSSLBypass.forceSSLBypass();
+        clearSSLProperties();
         installGlobalInsecureSSL();
     }
     
@@ -40,6 +42,7 @@ public final class InsecureTransport extends Transport {
     
     @Override
     public void emit(OpenLineage.RunEvent runEvent) {
+        System.out.println("InsecureTransport: Emitting event to " + uri);
         try {
             String json = OpenLineageClientUtils.toJson(runEvent);
             
@@ -70,14 +73,34 @@ public final class InsecureTransport extends Transport {
             // Check response
             int responseCode = connection.getResponseCode();
             if (responseCode < 200 || responseCode >= 300) {
+                System.err.println("InsecureTransport: HTTP error code: " + responseCode);
                 throw new IOException("HTTP error code: " + responseCode);
+            } else {
+                System.out.println("InsecureTransport: Successfully sent event, response code: " + responseCode);
             }
             
         } catch (Exception e) {
+            System.err.println("InsecureTransport: Failed to emit event: " + e.getMessage());
+            e.printStackTrace();
             throw new RuntimeException("Failed to emit OpenLineage event", e);
         }
     }
     
+    private static void clearSSLProperties() {
+        // Clear all SSL-related system properties that might cause keystore errors
+        System.clearProperty("javax.net.ssl.keyStore");
+        System.clearProperty("javax.net.ssl.keyStorePassword");
+        System.clearProperty("javax.net.ssl.keyStoreType");
+        System.clearProperty("javax.net.ssl.trustStore");
+        System.clearProperty("javax.net.ssl.trustStorePassword");
+        System.clearProperty("javax.net.ssl.trustStoreType");
+        
+        // Set properties to disable SSL validation
+        System.setProperty("com.sun.net.ssl.checkRevocation", "false");
+        System.setProperty("sun.security.ssl.allowUnsafeRenegotiation", "true");
+        System.setProperty("sun.net.useExclusiveBind", "false");
+    }
+
     private static void installGlobalInsecureSSL() {
         try {
             // Create a trust manager that accepts all certificates
@@ -92,9 +115,10 @@ public final class InsecureTransport extends Transport {
             };
             
             // Install the all-trusting trust manager
-            SSLContext sc = SSLContext.getInstance("SSL");
+            SSLContext sc = SSLContext.getInstance("TLS");
             sc.init(null, trustAllCerts, new java.security.SecureRandom());
             HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            SSLContext.setDefault(sc);
             
             // Create all-trusting host name verifier
             HostnameVerifier allHostsValid = new HostnameVerifier() {
@@ -106,7 +130,10 @@ public final class InsecureTransport extends Transport {
             // Install the all-trusting host verifier
             HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
             
+            System.out.println("InsecureTransport: Successfully installed global insecure SSL context");
+            
         } catch (Exception e) {
+            System.err.println("InsecureTransport: Failed to install insecure SSL context: " + e.getMessage());
             throw new RuntimeException("Failed to install insecure SSL context", e);
         }
     }

@@ -1,1 +1,2 @@
 io.openlineage.spark.insecure.InsecureOpenLineageUnifiedListener
+io.openlineage.spark.insecure.DirectInsecureSparkListener

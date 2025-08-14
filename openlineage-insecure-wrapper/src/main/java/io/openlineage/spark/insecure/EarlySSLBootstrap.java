@@ -9,17 +9,22 @@ import io.openlineage.spark.InsecureOpenLineageSpark;
 public class EarlySSLBootstrap {
     static {
         try {
+            // Clear all SSL-related system properties that might cause keystore errors
+            System.clearProperty("javax.net.ssl.keyStore");
+            System.clearProperty("javax.net.ssl.keyStorePassword");
+            System.clearProperty("javax.net.ssl.keyStoreType");
+            System.clearProperty("javax.net.ssl.trustStore");
+            System.clearProperty("javax.net.ssl.trustStorePassword");
+            System.clearProperty("javax.net.ssl.trustStoreType");
+            
             // Force immediate SSL context installation
             InsecureOpenLineageSpark.installGlobalInsecureSSL();
             
             // Set system properties that might be read by shaded HTTP components
-            System.setProperty("javax.net.ssl.trustStore", "");
-            System.setProperty("javax.net.ssl.trustStorePassword", "");
-            System.setProperty("javax.net.ssl.keyStore", "");
-            System.setProperty("javax.net.ssl.keyStorePassword", "");
             System.setProperty("com.sun.net.ssl.checkRevocation", "false");
             System.setProperty("sun.security.ssl.allowUnsafeRenegotiation", "true");
             System.setProperty("sun.security.ssl.allowLegacyHelloMessages", "true");
+            System.setProperty("sun.net.useExclusiveBind", "false");
             
             // Properties that might be checked by OpenLineage's shaded HTTP client
             System.setProperty("io.openlineage.ssl.trustAll", "true");
@@ -29,7 +34,6 @@ public class EarlySSLBootstrap {
             
             // Disable all SSL verification at JVM level
             System.setProperty("trust_all_cert", "true");
-            System.setProperty("javax.net.ssl.trustStoreType", "");
             
             System.err.println("[EarlySSLBootstrap] Comprehensive SSL bypass installed. TEST ONLY!");
         } catch (Exception e) {
