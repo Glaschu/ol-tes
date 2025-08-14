@@ -28,8 +28,20 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
 
   static {
     try {
+      // Force early bootstrap
+      EarlySSLBootstrap.init();
+      
+      // Install insecure SSL immediately when class loads
       InsecureOpenLineageSpark.installGlobalInsecureSSL();
       log.warn("[InsecureOpenLineageUnifiedListener] Installed GLOBAL insecure SSL context. TEST USE ONLY.");
+      
+      // Also set system properties as backup
+      System.setProperty("javax.net.ssl.trustStore", "");
+      System.setProperty("javax.net.ssl.trustStorePassword", "");
+      System.setProperty("javax.net.ssl.trustStoreType", "JKS");
+      System.setProperty("com.sun.net.ssl.checkRevocation", "false");
+      System.setProperty("sun.security.ssl.allowUnsafeRenegotiation", "true");
+      
     } catch (RuntimeException ex) {
       log.error("Failed to install insecure SSL context", ex);
     }
@@ -46,10 +58,20 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
 
   private OpenLineageSparkListener createDelegate() {
     try {
+      // Re-install SSL bypass right before creating delegate (in case it got reset)
+      InsecureOpenLineageSpark.installGlobalInsecureSSL();
       return new OpenLineageSparkListener();
     } catch (Throwable t) {
       log.error("Failed to instantiate OpenLineageSparkListener; lineage events will NOT be emitted", t);
-      return new OpenLineageSparkListener(); // final attempt; may still fail later
+      // Try once more with aggressive SSL bypass
+      try {
+        System.setProperty("javax.net.ssl.trustStore", "");
+        InsecureOpenLineageSpark.installGlobalInsecureSSL();
+        return new OpenLineageSparkListener();
+      } catch (Throwable t2) {
+        log.error("Final attempt to create OpenLineageSparkListener failed", t2);
+        throw new RuntimeException("Cannot create OpenLineageSparkListener even with SSL bypass", t2);
+      }
     }
   }
 
