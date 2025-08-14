@@ -60,6 +60,16 @@ public final class HttpInsecureTransport extends Transport {
 
   public HttpInsecureTransport(@NonNull final HttpInsecureConfig httpConfig) {
     this(withInsecureTimeout(httpConfig), httpConfig);
+    
+    // Console logging for AWS Glue debugging
+    System.out.println("=== HttpInsecureTransport v1.33.0 initialized ===");
+    System.out.println("Target URI: " + this.uri);
+    System.out.println("Headers: " + this.headers);
+    System.out.println("Compression: " + this.compression);
+    System.out.println("SSL Certificate Verification: DISABLED");
+    System.out.println("OpenLineage Version: 1.33.0 Compatible");
+    System.out.println("Transport Type: http_insecure");
+    System.out.println("===============================================");
   }
 
   public HttpInsecureTransport(
@@ -79,6 +89,8 @@ public final class HttpInsecureTransport extends Transport {
     System.out.println("Headers: " + this.headers);
     System.out.println("Compression: " + this.compression);
     System.out.println("SSL Certificate Verification: DISABLED");
+    System.out.println("OpenLineage Version: 1.33.0 Compatible");
+    System.out.println("Transport Type: http_insecure");
     System.out.println("===============================================");
   }
 
@@ -188,6 +200,8 @@ public final class HttpInsecureTransport extends Transport {
 
   public void emit(String eventAsJson) {
     System.out.println("=== HttpInsecureTransport.emit() called ===");
+    System.out.println("Transport Type: http_insecure");
+    System.out.println("OpenLineage Version: 1.33.0");
     System.out.println("Event JSON length: " + eventAsJson.length());
     System.out.println("Target URI: " + this.uri);
     
@@ -196,7 +210,7 @@ public final class HttpInsecureTransport extends Transport {
       setHeaders(request);
       setBody(request, eventAsJson);
 
-      System.out.println("Sending HTTP POST request...");
+      System.out.println("Sending HTTP POST request to: " + uri);
       
       http.execute(request.build(), response -> {
         System.out.println("HTTP Response Code: " + response.getCode());
@@ -217,11 +231,11 @@ public final class HttpInsecureTransport extends Transport {
                   "code: %d, response: %s", response.getCode(), body));
         }
         
-        System.out.println("Event successfully sent!");
+        System.out.println("Event successfully sent via http_insecure transport!");
         return response;
       });
     } catch (Exception e) {
-      System.err.println("Failed to send lineage event: " + e.getMessage());
+      System.err.println("Failed to send lineage event via http_insecure transport: " + e.getMessage());
       e.printStackTrace();
       throw new OpenLineageClientException(
           String.format("Failed to send lineage event: %s", eventAsJson), e);

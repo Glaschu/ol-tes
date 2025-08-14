@@ -11,6 +11,19 @@ import io.openlineage.client.transports.TransportConfig;
 
 public class HttpInsecureTransportBuilder implements TransportBuilder {
 
+  public static final String TRANSPORT_TYPE = "http_insecure";
+
+  static {
+    System.out.println("=== HttpInsecureTransportBuilder class loaded ===");
+    System.out.println("Transport type: " + TRANSPORT_TYPE);
+    System.out.println("Builder class: " + HttpInsecureTransportBuilder.class.getName());
+    System.out.println("=================================================");
+  }
+
+  public HttpInsecureTransportBuilder() {
+    System.out.println("HttpInsecureTransportBuilder instance created for type: " + TRANSPORT_TYPE);
+  }
+
   @Override
   public TransportConfig getConfig() {
     return new HttpInsecureConfig();
@@ -18,11 +31,15 @@ public class HttpInsecureTransportBuilder implements TransportBuilder {
 
   @Override
   public Transport build(TransportConfig config) {
+    if (!(config instanceof HttpInsecureConfig)) {
+      throw new IllegalArgumentException(
+          "Expected HttpInsecureConfig but got " + config.getClass().getSimpleName());
+    }
     return new HttpInsecureTransport((HttpInsecureConfig) config);
   }
 
   @Override
   public String getType() {
-    return "http_insecure";
+    return TRANSPORT_TYPE;
   }
 }

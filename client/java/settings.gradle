@@ -1,4 +1,3 @@
-include('openlineage-java')
 include('transports-http-insecure')
 
 buildCache {
