@@ -26,16 +26,18 @@ Instead we take the minimal, explicit approach: install a permissive (trust‑al
 mvn clean package
 ```
 
-Resulting JAR: `target/openlineage-insecure-wrapper-1.0-SNAPSHOT.jar`
+Resulting JARs:
+* `target/openlineage-insecure-wrapper-1.0-SNAPSHOT.jar` (plain)
+* `target/openlineage-insecure-all.jar` (shaded: bundles openlineage-java + openlineage-spark; still relies on Spark + SLF4J from runtime)
 
 ## Usage Scenarios
 
 ### 1. AWS Glue (Spark environment)
 
-Upload the built JAR to S3 and add it to the Glue job (alongside the official `openlineage-spark` JAR you already supply):
+Upload the shaded JAR (`openlineage-insecure-all.jar`) to S3 and add it to the Glue job (no need to add a separate openlineage-spark jar):
 
 ```
---extra-jars s3://your-bucket/openlineage-insecure-wrapper-1.0-SNAPSHOT.jar
+--extra-jars s3://your-bucket/openlineage-insecure-all.jar
 ```
 
 In your Glue script (Scala or Python via JVM config) before creating the session:
@@ -55,11 +57,11 @@ Required Spark configs set by helper:
 
 ### 2. Plain spark-submit (local / test cluster)
 
-Put both jars on the classpath (this helper and the standard `openlineage-spark`). Example:
+Use only the shaded jar:
 
 ```bash
 spark-submit \
-    --jars openlineage-insecure-wrapper-1.0-SNAPSHOT.jar,openlineage-spark-0.22.0.jar \
+    --jars openlineage-insecure-all.jar \
     --conf spark.openlineage.transport.type=http \
     --conf spark.openlineage.transport.url=https://openlineage.dev.local:5000 \
     your-app.jar
@@ -75,18 +77,38 @@ If you call `configureInsecureTransport(conf, url)` that already installs the gl
 
 ### 2b. spark-submit with ONLY --conf (no code changes)
 
-Add the provided listener so insecure SSL is installed as soon as Spark initializes listeners:
+Add BOTH listeners so insecure SSL is installed before the OpenLineage listener initializes. Order matters (insecure first):
 
 ```bash
 spark-submit \
-    --jars openlineage-insecure-wrapper-1.0-SNAPSHOT.jar,openlineage-spark-0.22.0.jar \
-    --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureSslInitListener \
+    --jars openlineage-insecure-all.jar \
+    --conf spark.extraListeners=io.openlineage.spark.insecure.InsecureSslInitListener,io.openlineage.spark.agent.OpenLineageSparkListener \
     --conf spark.openlineage.transport.type=http \
     --conf spark.openlineage.transport.url=https://openlineage.dev.local:5000 \
+    --conf spark.openlineage.namespace=dev \
+    --conf spark.app.name=demo-openlineage-job \
     your-app.jar
 ```
 
-This path requires zero application code changes. The listener's static initializer installs the global insecure SSL context before OpenLineage first sends events.
+This path requires zero application code changes. The first listener's static initializer installs the global insecure SSL context; the second listener (from the official openlineage-spark jar) emits lineage events.
+
+If you omit `io.openlineage.spark.agent.OpenLineageSparkListener` no events will be produced.
+
+### Troubleshooting: No events emitted
+
+Common causes:
+1. Missing OpenLineage listener: ensure `io.openlineage.spark.agent.OpenLineageSparkListener` is present in `spark.extraListeners` AFTER the insecure listener.
+2. Missing openlineage classes: if you used the plain jar, add the official `openlineage-spark` jar OR switch to the shaded `openlineage-insecure-all.jar`.
+3. Wrong ordering: insecure listener must come first so SSL bypass is active before the OpenLineage transport is constructed.
+4. Endpoint unreachable / network (Glue VPC security groups, DNS, firewall). Test with a lightweight job hitting the URL (e.g. add a small Scala snippet doing `scala.io.Source.fromURL("https://.../health").mkString`).
+5. Self-signed certificate still rejected: verify logs; add `--conf spark.executor.extraJavaOptions=-Djavax.net.debug=ssl --conf spark.driver.extraJavaOptions=-Djavax.net.debug=ssl` for verbose SSL debug (use sparingly; very verbose).
+6. Missing required config: at minimum set `spark.openlineage.transport.type`, `spark.openlineage.transport.url`, and ensure `spark.app.name` (used as job name). Optionally set `spark.openlineage.namespace`.
+7. Suppressed errors: enable debug logging: `--conf spark.openlineage.debug=true` (if supported by your openlineage-spark version) or raise root logger: `--conf spark.driver.extraJavaOptions='-Dorg.slf4j.simpleLogger.defaultLogLevel=debug'`.
+
+Verification steps:
+* Check driver logs for lines containing `OpenLineageSparkListener` and `Sending lineage event` (or similar).
+* Use a local proxy (e.g. mitmproxy) pointing `spark.openlineage.transport.url` to inspect outgoing POSTs (testing only).
+* Curl / health-check the lineage endpoint from another environment to confirm it is up.
 
 ### 3. Direct client usage (manual emission)
 

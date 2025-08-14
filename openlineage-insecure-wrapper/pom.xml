@@ -20,20 +20,18 @@
     </properties>
 
     <dependencies>
-        <!-- OpenLineage Spark Integration -->
+        <!-- OpenLineage Spark Integration (bundled into shaded jar) -->
         <dependency>
             <groupId>io.openlineage</groupId>
             <artifactId>openlineage-spark</artifactId>
             <version>${openlineage.version}</version>
-            <scope>provided</scope>
         </dependency>
         
-        <!-- OpenLineage Java Client -->
+        <!-- OpenLineage Java Client (bundled) -->
         <dependency>
             <groupId>io.openlineage</groupId>
             <artifactId>openlineage-java</artifactId>
             <version>${openlineage.version}</version>
-            <scope>provided</scope>
         </dependency>
         
         <!-- Spark Core - provided by the runtime environment -->
@@ -89,7 +87,9 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <finalName>openlineage-insecure-all</finalName>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <minimizeJar>false</minimizeJar>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -100,6 +100,13 @@
                                     </excludes>
                                 </filter>
                             </filters>
+                            <!-- Exclude Spark & SLF4J APIs (provided at runtime) even if transitively pulled -->
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>org.apache.spark:*</exclude>
+                                    <exclude>org.slf4j:slf4j-api</exclude>
+                                </excludes>
+                            </artifactSet>
                         </configuration>
                     </execution>
                 </executions>
