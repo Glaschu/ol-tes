@@ -1,0 +1,9 @@
+include('openlineage-java')
+include('transports-http-insecure')
+
+buildCache {
+    local {
+        enabled = true
+        directory = new File(rootDir, 'build-cache')
+    }
+}

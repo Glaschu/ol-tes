@@ -1,0 +1,28 @@
+/*
+/* Copyright 2018-2025 contributors to the OpenLineage project
+/* SPDX-License-Identifier: Apache-2.0
+*/
+
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+dependencies {
+    api 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
+    api 'com.fasterxml.jackson.core:jackson-core:2.17.2'
+    api 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    api 'org.slf4j:slf4j-api:2.0.12'
+    implementation 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+}
+
+// This is a placeholder build file for the main OpenLineage Java client
+// In a real scenario, you would depend on the actual OpenLineage client
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+        }
+    }
+}
