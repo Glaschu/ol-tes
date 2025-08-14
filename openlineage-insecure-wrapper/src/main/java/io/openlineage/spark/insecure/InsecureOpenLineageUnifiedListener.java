@@ -2,6 +2,7 @@ package io.openlineage.spark.insecure;
 
 import io.openlineage.spark.InsecureOpenLineageSpark;
 import io.openlineage.spark.agent.OpenLineageSparkListener;
+import org.apache.spark.SparkConf;
 import org.apache.spark.scheduler.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,7 @@ import org.slf4j.LoggerFactory;
  */
 public class InsecureOpenLineageUnifiedListener extends SparkListener {
   private static final Logger log = LoggerFactory.getLogger(InsecureOpenLineageUnifiedListener.class);
-  private final OpenLineageSparkListener delegate = new OpenLineageSparkListener();
+  private final OpenLineageSparkListener delegate;
 
   static {
     try {
@@ -31,7 +32,21 @@ public class InsecureOpenLineageUnifiedListener extends SparkListener {
   }
 
   public InsecureOpenLineageUnifiedListener() {
-    // delegate constructed; nothing else
+    this.delegate = createDelegate();
+  }
+
+  // Spark may try (SparkConf) constructor via reflection; provide it.
+  public InsecureOpenLineageUnifiedListener(SparkConf conf) {
+    this.delegate = createDelegate();
+  }
+
+  private OpenLineageSparkListener createDelegate() {
+    try {
+      return new OpenLineageSparkListener();
+    } catch (Throwable t) {
+      log.error("Failed to instantiate OpenLineageSparkListener; lineage events will NOT be emitted", t);
+      return new OpenLineageSparkListener(); // final attempt; may still fail later
+    }
   }
 
   @Override
